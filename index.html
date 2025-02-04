@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArchiveRewritter</title>
+  <link rel="stylesheet" href="https://cdn.metroui.org.ua/current/metro.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background: linear-gradient(135deg, #001f3f, #000000);
+      color: white;
+    }
+    #app {
+      text-align: center;
+      background-color: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+      width: 400px;
+    }
+    h1 {
+      color: #0078d7;
+      margin-bottom: 20px;
+      font-size: 2.5em;
+    }
+    .input-group {
+      margin-bottom: 10px;
+    }
+    .input-group input {
+      width: 100%;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #0078d7;
+      background-color: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+    .button-group {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .button-group button {
+      flex: 1;
+      margin: 0 5px;
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+      background-color: #0078d7;
+      color: white;
+      cursor: pointer;
+    }
+    .button-group button:hover {
+      background-color: #005bb5;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin-top: 10px;
+      max-height: 150px;
+      overflow-y: auto;
+      text-align: left;
+    }
+    li {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 5px;
+      margin: 5px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-radius: 5px;
+    }
+    .move-buttons button {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>ArchiveRewritter</h1>
+    <div class="input-group">
+      <input type="text" id="nombre-personalizado" placeholder="Nombre personalizado (ej: archivo)">
+    </div>
+    <div class="input-group">
+      <input type="text" id="identificador" placeholder="Identificador (ej: _)">
+    </div>
+    <div class="input-group">
+      <input type="number" id="numero-inicial" placeholder="Número inicial (ej: 1)" min="1">
+    </div>
+    <div class="button-group">
+      <button id="select-files">Seleccionar Archivos</button>
+      <button id="renombrar">Renombrar Archivos</button>
+    </div>
+    <ul id="file-list"></ul>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    document.getElementById('select-files').addEventListener('click', async () => {
+      const archivos = await ipcRenderer.invoke('select-files');
+      if (archivos.length > 0) {
+        window.archivosSeleccionados = archivos;
+        actualizarListaArchivos();
+      }
+    });
+
+    function actualizarListaArchivos() {
+      const lista = document.getElementById('file-list');
+      lista.innerHTML = '';
+      window.archivosSeleccionados.forEach((archivo, index) => {
+        const li = document.createElement('li');
+        li.textContent = archivo;
+
+        const moveButtons = document.createElement('div');
+        moveButtons.classList.add('move-buttons');
+
+        const upButton = document.createElement('button');
+        upButton.textContent = '↑';
+        upButton.onclick = () => moverArchivo(index, -1);
+
+        const downButton = document.createElement('button');
+        downButton.textContent = '↓';
+        downButton.onclick = () => moverArchivo(index, 1);
+
+        moveButtons.appendChild(upButton);
+        moveButtons.appendChild(downButton);
+        li.appendChild(moveButtons);
+        lista.appendChild(li);
+      });
+    }
+
+    function moverArchivo(index, direction) {
+      const nuevoIndex = index + direction;
+      if (nuevoIndex >= 0 && nuevoIndex < window.archivosSeleccionados.length) {
+        const temp = window.archivosSeleccionados[index];
+        window.archivosSeleccionados[index] = window.archivosSeleccionados[nuevoIndex];
+        window.archivosSeleccionados[nuevoIndex] = temp;
+        actualizarListaArchivos();
+      }
+    }
+
+    document.getElementById('renombrar').addEventListener('click', async () => {
+      const nombrePersonalizado = document.getElementById('nombre-personalizado').value;
+      const identificador = document.getElementById('identificador').value;
+      const numeroInicial = parseInt(document.getElementById('numero-inicial').value, 10);
+
+      if (!nombrePersonalizado || !identificador || isNaN(numeroInicial)) {
+        await ipcRenderer.invoke('show-error-dialog', {
+          title: 'Error',
+          message: 'Por favor, completa todos los campos.',
+        });
+        return;
+      }
+
+      if (!window.archivosSeleccionados || window.archivosSeleccionados.length === 0) {
+        await ipcRenderer.invoke('show-error-dialog', {
+          title: 'Error',
+          message: 'No hay archivos seleccionados.',
+        });
+        return;
+      }
+
+      const resultado = await ipcRenderer.invoke('rename-files', {
+        archivos: window.archivosSeleccionados,
+        nombrePersonalizado,
+        identificador,
+        numeroInicial,
+      });
+
+      if (resultado.success) {
+        await ipcRenderer.invoke('show-info-dialog', {
+          title: 'Éxito',
+          message: '¡Archivos renombrados correctamente!',
+        });
+      } else {
+        await ipcRenderer.invoke('show-error-dialog', {
+          title: 'Error',
+          message: '¡Hubo un problema! Vuelve a intentarlo.',
+        });
+      }
+    });
+  </script>
+</body>
+</html>
